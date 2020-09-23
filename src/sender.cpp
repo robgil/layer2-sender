@@ -37,8 +37,12 @@ int counter = 0;
 
 #define ENABLE_DEBUG 
 
-char LOCAL_ADDRESS[9] = "fffff00d";
-char GATEWAY[9] = "fffff00c";
+//char LOCAL_ADDRESS[9] = "fffff00d";
+//char GATEWAY[9] = "fffff00c";
+
+char MAC[9] = "c0d3f00d";
+uint8_t LOCAL_ADDRESS[ADDR_LENGTH] = {0xc0, 0xd3, 0xf0, 0x0d};
+uint8_t GATEWAY[ADDR_LENGTH] = {0xc0, 0xd3, 0xf0, 0x0c};
 
 Layer1Class *Layer1;
 LL2Class *LL2;
@@ -46,6 +50,8 @@ int txPower = 20;
 
 //DHT
 DHT dht(DHTPIN, DHTTYPE);
+
+int _lastsent = 0;
 
 
 //Function that prints the reason by which ESP32 has been awaken from sleep
@@ -96,8 +102,8 @@ void setup() {
   //u8x8.setFont(u8x8_font_artosserif8_r);
   u8x8.setFont(u8x8_font_5x7_f);
   u8x8.drawString(0, 0, "LoRa Sender...");
-  u8x8.drawString(0, 1, GATEWAY);
-  u8x8.drawString(0, 2, LOCAL_ADDRESS);
+  //u8x8.drawString(0, 1, GATEWAY);
+  //u8x8.drawString(0, 2, LOCAL_ADDRESS);
   delay(500);
 
   Layer1 = new Layer1Class();
@@ -108,7 +114,7 @@ void setup() {
   {
     Serial.println(" --> LoRa initialized");
     LL2 = new LL2Class(Layer1); // initialize Layer2
-    LL2->setLocalAddress(LOCAL_ADDRESS); // this should either be randomized or set using the wifi mac address
+    LL2->setLocalAddress(MAC); // this should either be randomized or set using the wifi mac address
     LL2->setInterval(10000); // set to zero to disable routing packets
   }
   else
@@ -117,68 +123,65 @@ void setup() {
   }
 }
 
-struct Datagram buildDatagram(uint8_t destination[ADDR_LENGTH], uint8_t type, uint8_t* data, size_t len)
-{
-    struct Datagram datagram;
-    memcpy(datagram.destination, destination, ADDR_LENGTH);
-    datagram.type = 'c';
-    memcpy(datagram.message, data, len);
-    return datagram;
-}
-
-void loop() {
-  LL2->daemon();
-  char data[128] = {0};
-  char counter_str[128] = {0};
+void sendEnvironmentData() {
   int msglen = 0;
   int packetsize = 0;
-  sprintf(counter_str, "%i", counter);
 
-  u8x8.drawString(0, 3, "Packets: ");
-  u8x8.drawString(9, 3, counter_str);
-
+  // Turn on activity light
   #ifdef ENABLE_DEBUG
   digitalWrite(LED, HIGH);
   #endif
 
-  delay(1000);
-
-  #ifdef ENABLE_DEBUG
-  digitalWrite(LED, LOW);
-  #endif
 
   float temperature = dht.readTemperature(true);
   float humidity = dht.readHumidity();
 
-  // Build Packet
-  msglen = sprintf(data, "%f,%f", temperature, humidity);
+  // Build Datagram
   #ifdef ENABLE_DEBUG
-  Serial.println(data);
+  //Serial.println(data);
   #endif
 
-  struct Datagram packet = buildDatagram((uint8_t *)GATEWAY, 'c', (uint8_t *)data, msglen);
-  packetsize = msglen + HEADER_LENGTH;
+  struct Datagram datagram; 
+  msglen = sprintf((char*)datagram.message, "%i,%i,%i", (int)temperature, (int)humidity, counter); //FIXME: Counter doesn't increment. It should be replaced with boot count
+
+  memcpy(datagram.destination, GATEWAY, ADDR_LENGTH);
+  datagram.type = 's';
+
+  packetsize = msglen + DATAGRAM_HEADER;
 
   // Send packet
-  LL2->writeData(packet, packetsize);
+  LL2->writeData(datagram, packetsize);
   counter++;
+
+  // Turn off activity light
+  #ifdef ENABLE_DEBUG
+  digitalWrite(LED, LOW);
+  #endif
+}
+
+void loop() {
+  LL2->daemon();
+  double time = Layer1Class::getTime();
+
+  if(time - _lastsent > 5000) {
+    Serial.println("Sending!!");
+    sendEnvironmentData();
+    Serial.print("Time: ");
+    Serial.println(time);
+    Serial.print("Last Sent: ");
+    Serial.println(_lastsent);
+    _lastsent = Layer1Class::getTime();
+  }
 
   // After processing, go to sleep
   #ifdef ENABLE_DEBUG
-  Serial.println("Going to sleep...");
+  //Serial.println((char*)datagram.message);
+  //Serial.println(Layer1Class::getTime());
+  //char routes[128];
+  //LL2->getRoutingTable(routes);
+  //Serial.println(routes);
   #endif
 
-  char routes[128];
-  char neighbors[128];
-  char config[128];
-
-  LL2->getRoutingTable(routes);
-  Serial.println(routes);
-
-  LL2->getNeighborTable(neighbors);
-  Serial.println(neighbors);
-
-  delay(1000);
-
-  //esp_deep_sleep_start();
+  //Serial.println("Going to sleep...");
+  //esp_deep_sleep_start(); //FIXME: Seems to break sending packets
 }
