@@ -98,12 +98,8 @@ void setup() {
 
   u8x8.begin();
   u8x8.setPowerSave(0);
-  //u8x8.setFont(u8x8_font_chroma48medium8_r);
-  //u8x8.setFont(u8x8_font_artosserif8_r);
   u8x8.setFont(u8x8_font_5x7_f);
   u8x8.drawString(0, 0, "LoRa Sender...");
-  //u8x8.drawString(0, 1, GATEWAY);
-  //u8x8.drawString(0, 2, LOCAL_ADDRESS);
   delay(500);
 
   Layer1 = new Layer1Class();
@@ -171,16 +167,12 @@ void loop() {
     Serial.print("Last Sent: ");
     Serial.println(_lastsent);
     _lastsent = Layer1Class::getTime();
+    #ifdef ENABLE_DEBUG
+    char routes[128];
+    LL2->getRoutingTable(routes);
+    Serial.println(routes);
+    #endif
   }
-
-  // After processing, go to sleep
-  #ifdef ENABLE_DEBUG
-  //Serial.println((char*)datagram.message);
-  //Serial.println(Layer1Class::getTime());
-  //char routes[128];
-  //LL2->getRoutingTable(routes);
-  //Serial.println(routes);
-  #endif
 
   //Serial.println("Going to sleep...");
   //esp_deep_sleep_start(); //FIXME: Seems to break sending packets
